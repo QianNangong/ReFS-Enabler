@@ -1,5 +1,6 @@
 #include <windows.h>
 #include <dismapi.h>
+#include <pathcch.h>
 
 #include <stdio.h>
 #include <string.h>
@@ -36,19 +37,25 @@ UINT WINAPI GenerateRandomString(PWSTR lpBuffer, UINT* dwLength)
     return *dwLength;
 }
 
-PWSTR WINAPI GetTempMountPath(void)
+PCWSTR WINAPI GetTempMountPath(void)
 {
-    static WCHAR szTempMountPath[NT_MAX_PATH + 1] = { 0 };
-    if (szTempMountPath[0] != L'\0')
+    static WCHAR* szTempMountPath = NULL;
+    if (szTempMountPath != NULL)
     {
         return szTempMountPath;
     }
+    szTempMountPath = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, NT_MAX_PATH + 1);
     WCHAR szSysTempPath[MAX_PATH];
     GetTempPathW(MAX_PATH, szSysTempPath);
     WCHAR szTempBuf[9] = { 0 };
     UINT nCount = 8;
     GenerateRandomString(szTempBuf, &nCount);
-    snwprintf(szTempMountPath, NT_MAX_PATH, L"\\\\?\\%s\\%s", szSysTempPath, szTempBuf);
+    if (FAILED(PathCchCombineEx(szTempMountPath, NT_MAX_PATH, szSysTempPath, szTempBuf, PATHCCH_ALLOW_LONG_PATHS)))
+    {
+        HeapFree(GetProcessHeap(), 0, szTempMountPath);
+        szTempMountPath = NULL;
+        return NULL;
+    }
     if (!CreateDirectoryW(szTempMountPath, NULL))
     {
         szTempMountPath[0] = '\0';
@@ -57,25 +64,41 @@ PWSTR WINAPI GetTempMountPath(void)
     return szTempMountPath;
 }
 
-PWSTR WINAPI MountImage(PCWSTR pWimFile, UINT nIndex)
+void WINAPI Cleanup(void)
 {
-    if (FAILED(DismMountImage(pWimFile, GetTempMountPath(), nIndex, NULL, DismImageIndex, DISM_MOUNT_READWRITE, NULL, NULL, NULL)))
+    PCWSTR pszPath = GetTempMountPath();
+    if (pszPath)
+    {
+        HeapFree(GetProcessHeap(), 0, (LPVOID) pszPath);
+    }
+}
+
+PCWSTR WINAPI MountImage(PCWSTR pszWimFile, UINT nIndex)
+{
+    PCWSTR pszTempPath = GetTempMountPath();
+    if (!pszTempPath)
     {
         return NULL;
     }
-    return GetTempMountPath();
+    if (FAILED(DismMountImage(pszWimFile, pszTempPath, nIndex, NULL, DismImageIndex, DISM_MOUNT_READWRITE, NULL, NULL, NULL)))
+    {
+        return NULL;
+    }
+    return pszTempPath;
 }
 
-BOOL WINAPI EnableReFSInRegistry(PCWSTR pMountPath)
+BOOL WINAPI EnableReFSInRegistry(PCWSTR pszMountPath)
 {
     HKEY hSystemRootKey = INVALID_HANDLE_VALUE;
     HKEY hFeatureKey = INVALID_HANDLE_VALUE;
     WCHAR szRegistryKeyFile[NT_MAX_PATH + 1] = { 0 };
-    snwprintf(szRegistryKeyFile, NT_MAX_PATH, L"%s\\Windows\\System32\\config\\SYSTEM");
+    if (FAILED(PathCchCombineEx(szRegistryKeyFile, NT_MAX_PATH, pszMountPath, L"Windows\\System32\\config\\SYSTEM", PATHCCH_ALLOW_LONG_PATHS)))
+    {
+        return FALSE;
+    }
     LRESULT lr = RegLoadAppKeyW(szRegistryKeyFile, &hSystemRootKey, KEY_ALL_ACCESS, REG_PROCESS_APPKEY, 0);
     if (lr != ERROR_SUCCESS || hSystemRootKey == INVALID_HANDLE_VALUE)
     {
-
         return FALSE;
     }
     lr = RegCreateKeyExW(hSystemRootKey, L"ControlSet001\\Control\\FeatureManagement\\Overrides\\8\\3689412748", 0, NULL, REG_OPTION_NON_VOLATILE, KEY_ALL_ACCESS, NULL, &hFeatureKey, NULL);
@@ -93,23 +116,23 @@ BOOL WINAPI EnableReFSInRegistry(PCWSTR pMountPath)
     return TRUE;
 }
 
-BOOL WINAPI UnmountImage(PCWSTR pMountPath)
+BOOL WINAPI UnmountImage(PCWSTR pszMountPath)
 {
-    return SUCCEEDED(DismUnmountImage(pMountPath, DISM_COMMIT_IMAGE, NULL, NULL, NULL));
+    return SUCCEEDED(DismUnmountImage(pszMountPath, DISM_COMMIT_IMAGE, NULL, NULL, NULL));
 }
 
-UINT WINAPI EnableReFS(PCWSTR pWimFile)
+UINT WINAPI EnableReFS(PCWSTR pszWimFile)
 {
     UINT nImgCount = 0;
     DismImageInfo* pImgInfo = NULL;
-    if (FAILED(DismGetImageInfo(pWimFile, &pImgInfo, &nImgCount)))
+    if (FAILED(DismGetImageInfo(pszWimFile, &pImgInfo, &nImgCount)))
     {
-        PRINT_ERR(L"Failed to open wim file %s. HRESULT = 0x%08lX\r\n", pWimFile, GetLastError());
+        PRINT_ERR(L"Failed to open wim file %s. HRESULT = 0x%08lX\r\n", pszWimFile, GetLastError());
         return 0;
     }
     if (nImgCount == 0)
     {
-        PRINT_ERR(L"No suitable image found in %s.\r\n", pWimFile);
+        PRINT_ERR(L"No suitable image found in %s.\r\n", pszWimFile);
         return 0;
     }
     UINT nEnabled = 0;
@@ -117,12 +140,12 @@ UINT WINAPI EnableReFS(PCWSTR pWimFile)
     {
         BOOL bSuccess = TRUE;
         DismImageInfo info = pImgInfo[i];
-        if (info.MajorVersion < 10 || info.Build < 25281 || !lstrcmpW(L"WindowsPE", info.EditionId) || !lstrcmpW(L"WindowsPE", info.InstallationType))
+        if (info.MajorVersion < 10 || info.Build < 25281 || lstrcmpW(L"WindowsPE", info.EditionId) || lstrcmpW(L"WindowsPE", info.InstallationType))
         {
             continue;
         }
         PRINT_OUT(L"Enable ReFS Installation on image \"%s\" #%u...\r\n", info.ImageName, info.ImageIndex);
-        PWSTR pszMountPath = MountImage(pWimFile, i);
+        PCWSTR pszMountPath = MountImage(pszWimFile, i);
         if (pszMountPath == NULL)
         {
             PRINT_ERR(L"[#%u] Failed to mount image. HRESULT = 0x%08lX\r\n", info.ImageIndex, GetLastError());
@@ -181,10 +204,8 @@ int wmain(int argc, const wchar_t* argv[])
         goto END;
     }
     srand((unsigned int)timeGetTime());
-    WCHAR szFullPath[NT_MAX_PATH + 1] = { 0 };
-    GetFullPathNameW(argv[1], NT_MAX_PATH, szFullPath, NULL);
     WCHAR szWimFile[NT_MAX_PATH + 1] = { 0 };
-    snwprintf(szWimFile, NT_MAX_PATH, L"\\\\?\\%s", szFullPath);
+    GetFullPathNameW(argv[1], NT_MAX_PATH, szWimFile, NULL);
     UINT nEnabled = EnableReFS(szWimFile);
     if (nEnabled != 0)
     {
@@ -192,9 +213,10 @@ int wmain(int argc, const wchar_t* argv[])
     }
     else
     {
-        PRINT_ERR(L"No suitable image found in %s.\r\n", argv[1]);
+        PRINT_ERR(L"No suitable image found in %s.\r\n", szWimFile);
     }
     DismShutdown();
+    Cleanup();
 END:
     if (!IsRunningFromTerminal())
     {

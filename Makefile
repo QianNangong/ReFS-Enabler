@@ -2,7 +2,7 @@ ARCH:=x86_64
 CC=$(ARCH)-w64-mingw32-gcc
 WINDRES=$(ARCH)-w64-mingw32-windres
 CFLAGS=-municode -O2
-LDFLAGS=$(CFLAGS) -mconsole -lwinmm -ldismapi
+LDFLAGS=$(CFLAGS) -mconsole -lwinmm -ldismapi -lpathcch
 
 all: enabler
 
