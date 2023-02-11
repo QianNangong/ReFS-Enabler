@@ -15,6 +15,10 @@
 #define PRINT_ERR(...) fwprintf(stderr, __VA_ARGS__)
 #define PRINT_OUT(...) fwprintf(stdout, __VA_ARGS__)
 
+#ifdef NT_MAX_PATH
+#undef NT_MAX_PATH
+#endif
+
 #define NT_MAX_PATH 32767
 
 static const WCHAR CHARSET[] = L"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
