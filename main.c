@@ -154,14 +154,14 @@ int wmain(int argc, const wchar_t* argv[])
 {
     if (argc != 2)
     {
-        fwprintf(stderr, L"Usage:\r\n\t%s path\\to\\boot.wim", argv[0]);
-        return 0;
+        fwprintf(stderr, L"Usage:\r\n\t%s path\\to\\boot.wim\r\n", argv[0]);
+        goto END;
     }
 
     if (FAILED(DismInitialize(DismLogErrorsWarnings, NULL, NULL)))
     {
-        fwprintf(stderr, L"Failed to initialize Dism. HRESULT = 0x%08lX", GetLastError());
-        return 0;
+        fwprintf(stderr, L"Failed to initialize Dism. HRESULT = 0x%08lX\r\n", GetLastError());
+        goto END;
     }
     srand((unsigned int)timeGetTime());
     WCHAR szWimFile[32768] = { 0 };
@@ -169,15 +169,17 @@ int wmain(int argc, const wchar_t* argv[])
     UINT nEnabled = EnableReFS(szWimFile);
     if (nEnabled != 0)
     {
-        fwprintf(stdout, L"Done! %d image%s enabled.", nEnabled, nEnabled == 1 ? L"": L"s");
+        fwprintf(stdout, L"Done! %d image%s enabled.\r\n", nEnabled, nEnabled == 1 ? L"": L"s");
     }
     else
     {
-        fwprintf(stderr, L"No suitable image found in %s.", argv[1]);
+        fwprintf(stderr, L"No suitable image found in %s.\r\n", argv[1]);
     }
     DismShutdown();
+END:
     if (!IsRunningFromTerminal())
     {
+        fwprintf(stdout, L"Press any key to exit...");
         getchar();
     }
     return 0;
