@@ -104,12 +104,12 @@ UINT WINAPI EnableReFS(PCWSTR pWimFile)
     DismImageInfo* pImgInfo = NULL;
     if (FAILED(DismGetImageInfo(pWimFile, &pImgInfo, &nImgCount)))
     {
-        PRINT_ERR(L"Failed to open wim file %s. HRESULT = 0x%08lX", pWimFile, GetLastError());
+        PRINT_ERR(L"Failed to open wim file %s. HRESULT = 0x%08lX\r\n", pWimFile, GetLastError());
         return 0;
     }
     if (nImgCount == 0)
     {
-        PRINT_ERR(L"No suitable image found in %s.", pWimFile);
+        PRINT_ERR(L"No suitable image found in %s.\r\n", pWimFile);
         return 0;
     }
     UINT nEnabled = 0;
@@ -181,8 +181,10 @@ int wmain(int argc, const wchar_t* argv[])
         goto END;
     }
     srand((unsigned int)timeGetTime());
+    WCHAR szFullPath[NT_MAX_PATH + 1] = { 0 };
+    GetFullPathNameW(argv[1], NT_MAX_PATH, szFullPath, NULL);
     WCHAR szWimFile[NT_MAX_PATH + 1] = { 0 };
-    snwprintf(szWimFile, NT_MAX_PATH, L"\\\\?\\%s", argv[1]);
+    snwprintf(szWimFile, NT_MAX_PATH, L"\\\\?\\%s", szFullPath);
     UINT nEnabled = EnableReFS(szWimFile);
     if (nEnabled != 0)
     {
