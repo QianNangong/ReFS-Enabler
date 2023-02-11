@@ -143,6 +143,13 @@ UINT WINAPI EnableReFS(PCWSTR pWimFile)
     return nEnabled;
 }
 
+BOOL WINAPI IsRunningFromTerminal(void)
+{
+    DWORD szProcIDs[64] = { 0 };
+    DWORD dwProcCount = GetConsoleProcessList(szProcIDs, 64);
+    return dwProcCount > 1;
+}
+
 int wmain(int argc, const wchar_t* argv[])
 {
     if (argc != 2)
@@ -169,5 +176,9 @@ int wmain(int argc, const wchar_t* argv[])
         fwprintf(stderr, L"No suitable image found in %s.", argv[1]);
     }
     DismShutdown();
+    if (!IsRunningFromTerminal())
+    {
+        getchar();
+    }
     return 0;
 }
