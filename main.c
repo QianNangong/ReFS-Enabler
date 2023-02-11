@@ -4,6 +4,19 @@
 #include <stdio.h>
 #include <string.h>
 
+#ifdef PRINT_ERR
+#undef PRINT_ERR
+#endif
+
+#ifdef PRINT_OUT
+#undef PRINT_OUT
+#endif
+
+#define PRINT_ERR(...) fwprintf(stderr, __VA_ARGS__)
+#define PRINT_OUT(...) fwprintf(stdout, __VA_ARGS__)
+
+#define NT_MAX_PATH 32767
+
 static const WCHAR CHARSET[] = L"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 
 UINT WINAPI GenerateRandomString(PWSTR lpBuffer, UINT* dwLength)
@@ -21,7 +34,7 @@ UINT WINAPI GenerateRandomString(PWSTR lpBuffer, UINT* dwLength)
 
 PWSTR WINAPI GetTempMountPath(void)
 {
-    static WCHAR szTempMountPath[32767] = { 0 };
+    static WCHAR szTempMountPath[NT_MAX_PATH + 1] = { 0 };
     if (szTempMountPath[0] != L'\0')
     {
         return szTempMountPath;
@@ -31,7 +44,7 @@ PWSTR WINAPI GetTempMountPath(void)
     WCHAR szTempBuf[9] = { 0 };
     UINT nCount = 8;
     GenerateRandomString(szTempBuf, &nCount);
-    snwprintf(szTempMountPath, 32767, L"\\\\?\\%s\\%s", szSysTempPath, szTempBuf);
+    snwprintf(szTempMountPath, NT_MAX_PATH, L"\\\\?\\%s\\%s", szSysTempPath, szTempBuf);
     if (!CreateDirectoryW(szTempMountPath, NULL))
     {
         szTempMountPath[0] = '\0';
@@ -53,8 +66,8 @@ BOOL WINAPI EnableReFSInRegistry(PCWSTR pMountPath)
 {
     HKEY hSystemRootKey = INVALID_HANDLE_VALUE;
     HKEY hFeatureKey = INVALID_HANDLE_VALUE;
-    WCHAR szRegistryKeyFile[32768] = { 0 };
-    snwprintf(szRegistryKeyFile, 32767, L"%s\\Windows\\System32\\config\\SYSTEM");
+    WCHAR szRegistryKeyFile[NT_MAX_PATH + 1] = { 0 };
+    snwprintf(szRegistryKeyFile, NT_MAX_PATH, L"%s\\Windows\\System32\\config\\SYSTEM");
     LRESULT lr = RegLoadAppKeyW(szRegistryKeyFile, &hSystemRootKey, KEY_ALL_ACCESS, REG_PROCESS_APPKEY, 0);
     if (lr != ERROR_SUCCESS || hSystemRootKey == INVALID_HANDLE_VALUE)
     {
@@ -87,12 +100,12 @@ UINT WINAPI EnableReFS(PCWSTR pWimFile)
     DismImageInfo* pImgInfo = NULL;
     if (FAILED(DismGetImageInfo(pWimFile, &pImgInfo, &nImgCount)))
     {
-        fwprintf(stderr, L"Failed to open wim file %s. HRESULT = 0x%08lX", pWimFile, GetLastError());
+        PRINT_ERR(L"Failed to open wim file %s. HRESULT = 0x%08lX", pWimFile, GetLastError());
         return 0;
     }
     if (nImgCount == 0)
     {
-        fwprintf(stderr, L"No suitable image found in %s.", pWimFile);
+        PRINT_ERR(L"No suitable image found in %s.", pWimFile);
         return 0;
     }
     UINT nEnabled = 0;
@@ -104,34 +117,34 @@ UINT WINAPI EnableReFS(PCWSTR pWimFile)
         {
             continue;
         }
-        fwprintf(stdout, L"Enable ReFS Installation on image \"%s\" #%u...\r\n", info.ImageName, info.ImageIndex);
+        PRINT_OUT(L"Enable ReFS Installation on image \"%s\" #%u...\r\n", info.ImageName, info.ImageIndex);
         PWSTR pszMountPath = MountImage(pWimFile, i);
         if (pszMountPath == NULL)
         {
-            fwprintf(stderr, L"[#%u] Failed to mount image. HRESULT = 0x%08lX\r\n", info.ImageIndex, GetLastError());
+            PRINT_ERR(L"[#%u] Failed to mount image. HRESULT = 0x%08lX\r\n", info.ImageIndex, GetLastError());
             continue;
         }
         else
         {
-            fwprintf(stdout, L"[#%u] Image mounted.\r\n", info.ImageIndex);
+            PRINT_OUT(L"[#%u] Image mounted.\r\n", info.ImageIndex);
         }
         if (!EnableReFSInRegistry(pszMountPath))
         {
-            fwprintf(stderr, L"[#%u] Failed to enable ReFS in registry. HRESULT = 0x%08lx\r\n", info.ImageIndex, GetLastError());
+            PRINT_ERR(L"[#%u] Failed to enable ReFS in registry. HRESULT = 0x%08lx\r\n", info.ImageIndex, GetLastError());
             bSuccess = FALSE;
         }
         else
         {
-            fwprintf(stdout, L"[#%u] Feature 42189933 enabled.\r\n", info.ImageIndex);
+            PRINT_OUT(L"[#%u] Feature 42189933 enabled.\r\n", info.ImageIndex);
         }
         if (!UnmountImage(pszMountPath))
         {
-            fwprintf(stderr, L"[#%u] Failed to unmount image. HRESULT = 0x%08lx\r\n", info.ImageIndex, GetLastError());
+            PRINT_ERR(L"[#%u] Failed to unmount image. HRESULT = 0x%08lx\r\n", info.ImageIndex, GetLastError());
             continue;
         }
         else
         {
-            fwprintf(stdout, L"[#%u] Image committed and unmounted.\r\n", info.ImageIndex);
+            PRINT_OUT(L"[#%u] Image committed and unmounted.\r\n", info.ImageIndex);
         }
         if (bSuccess)
         {
@@ -154,32 +167,32 @@ int wmain(int argc, const wchar_t* argv[])
 {
     if (argc != 2)
     {
-        fwprintf(stderr, L"Usage:\r\n\t%s path\\to\\boot.wim\r\n", argv[0]);
+        PRINT_ERR(L"Usage:\r\n\t%s path\\to\\boot.wim\r\n", argv[0]);
         goto END;
     }
 
     if (FAILED(DismInitialize(DismLogErrorsWarnings, NULL, NULL)))
     {
-        fwprintf(stderr, L"Failed to initialize Dism. HRESULT = 0x%08lX\r\n", GetLastError());
+        PRINT_ERR(L"Failed to initialize Dism. HRESULT = 0x%08lX\r\n", GetLastError());
         goto END;
     }
     srand((unsigned int)timeGetTime());
-    WCHAR szWimFile[32768] = { 0 };
-    snwprintf(szWimFile, 32767, L"\\\\?\\%s", argv[1]);
+    WCHAR szWimFile[NT_MAX_PATH + 1] = { 0 };
+    snwprintf(szWimFile, NT_MAX_PATH, L"\\\\?\\%s", argv[1]);
     UINT nEnabled = EnableReFS(szWimFile);
     if (nEnabled != 0)
     {
-        fwprintf(stdout, L"Done! %d image%s enabled.\r\n", nEnabled, nEnabled == 1 ? L"": L"s");
+        PRINT_OUT(L"Done! %d image%s enabled.\r\n", nEnabled, nEnabled == 1 ? L"": L"s");
     }
     else
     {
-        fwprintf(stderr, L"No suitable image found in %s.\r\n", argv[1]);
+        PRINT_ERR(L"No suitable image found in %s.\r\n", argv[1]);
     }
     DismShutdown();
 END:
     if (!IsRunningFromTerminal())
     {
-        fwprintf(stdout, L"Press any key to exit...");
+        PRINT_OUT(L"Press any key to exit...");
         getchar();
     }
     return 0;
