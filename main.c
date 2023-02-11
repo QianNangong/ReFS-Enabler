@@ -1,6 +1,7 @@
 #include <windows.h>
 #include <dismapi.h>
 #include <pathcch.h>
+#include <winerror.h>
 
 #include <stdio.h>
 #include <string.h>
@@ -171,7 +172,7 @@ UINT WINAPI EnableReFS(PCWSTR pszWimFile)
         }
         else
         {
-            PRINT_OUT(L"[#%u] Image committed and unmounted.\r\n", info.ImageIndex);
+            PRINT_OUT(L"[#%u] Image %s and unmounted.\r\n", bSuccess ? L"commited" : L"discarded", info.ImageIndex);
         }
         if (bSuccess)
         {
