@@ -116,9 +116,9 @@ BOOL WINAPI EnableReFSInRegistry(PCWSTR pszMountPath)
     return TRUE;
 }
 
-BOOL WINAPI UnmountImage(PCWSTR pszMountPath)
+BOOL WINAPI UnmountImage(PCWSTR pszMountPath, BOOL bDiscard)
 {
-    return SUCCEEDED(DismUnmountImage(pszMountPath, DISM_COMMIT_IMAGE, NULL, NULL, NULL));
+    return SUCCEEDED(DismUnmountImage(pszMountPath, bDiscard ? DISM_DISCARD_IMAGE : DISM_COMMIT_IMAGE, NULL, NULL, NULL));
 }
 
 UINT WINAPI EnableReFS(PCWSTR pszWimFile)
@@ -145,7 +145,7 @@ UINT WINAPI EnableReFS(PCWSTR pszWimFile)
             continue;
         }
         PRINT_OUT(L"Enable ReFS Installation on image \"%s\" #%u...\r\n", info.ImageName, info.ImageIndex);
-        PCWSTR pszMountPath = MountImage(pszWimFile, i);
+        PCWSTR pszMountPath = MountImage(pszWimFile, info.ImageIndex);
         if (pszMountPath == NULL)
         {
             PRINT_ERR(L"[#%u] Failed to mount image. HRESULT = 0x%08lX\r\n", info.ImageIndex, GetLastError());
@@ -157,14 +157,14 @@ UINT WINAPI EnableReFS(PCWSTR pszWimFile)
         }
         if (!EnableReFSInRegistry(pszMountPath))
         {
-            PRINT_ERR(L"[#%u] Failed to enable ReFS in registry. HRESULT = 0x%08lx\r\n", info.ImageIndex, GetLastError());
+            PRINT_ERR(L"[#%u] Failed to enable ReFS in registry. HRESULT = 0x%08lX\r\n", info.ImageIndex, GetLastError());
             bSuccess = FALSE;
         }
         else
         {
             PRINT_OUT(L"[#%u] Feature 42189933 enabled.\r\n", info.ImageIndex);
         }
-        if (!UnmountImage(pszMountPath))
+        if (!UnmountImage(pszMountPath, !bSuccess))
         {
             PRINT_ERR(L"[#%u] Failed to unmount image. HRESULT = 0x%08lx\r\n", info.ImageIndex, GetLastError());
             continue;
